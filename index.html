@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Takeout Date Check</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5; color: #1a1a1a; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 32px 16px;
+  }
+  .card {
+    background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.1);
+    max-width: 640px; width: 100%; padding: 32px;
+  }
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: #666; margin-bottom: 24px; font-size: .95rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 24px 0 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #0066ff; color: #fff; border: none; border-radius: 8px;
+    padding: 12px 20px; font-size: 1rem; cursor: pointer; transition: background .15s;
+    text-decoration: none;
+  }
+  .btn:hover { background: #0052cc; }
+  .btn:disabled { background: #999; cursor: not-allowed; }
+  .btn-secondary { background: #f0f0f0; color: #1a1a1a; }
+  .btn-secondary:hover { background: #e0e0e0; }
+  .btn-success { background: #15803d; }
+  .btn-success:hover { background: #166534; }
+  .progress-bar-wrap {
+    background: #e5e7eb; border-radius: 99px; overflow: hidden;
+    height: 10px; margin: 12px 0;
+  }
+  .progress-bar { background: #0066ff; height: 100%; transition: width .2s; }
+  .stat-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0;
+  }
+  .stat {
+    background: #f8f9fa; border-radius: 8px; padding: 12px;
+    text-align: center;
+  }
+  .stat .num { font-size: 1.8rem; font-weight: 700; color: #0066ff; }
+  .stat .label { font-size: .8rem; color: #666; margin-top: 2px; }
+  .stat.green .num { color: #15803d; }
+  .stat.red .num { color: #b91c1c; }
+  .stat.gray .num { color: #666; }
+  .notice {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 12px 14px; margin: 16px 0; font-size: .9rem; color: #92400e;
+  }
+  .notice.info { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+  .notice.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+  .notice.success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+  .step { display: none; }
+  .step.active { display: block; }
+  .log { background: #1a1a1a; color: #e2e8f0; border-radius: 8px; padding: 12px;
+    font-size: .78rem; font-family: monospace; max-height: 200px; overflow-y: auto;
+    margin: 12px 0; }
+  ul.file-list { list-style: none; padding: 0; font-size: .85rem; max-height: 160px; overflow-y: auto; }
+  ul.file-list li { padding: 4px 0; border-bottom: 1px solid #f0f0f0; display: flex; gap: 8px; }
+  ul.file-list li:last-child { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: .72rem; font-weight: 600; }
+  .pill-ok { background: #dcfce7; color: #166534; }
+  .pill-fix { background: #dbeafe; color: #1e40af; }
+  .pill-skip { background: #f3f4f6; color: #6b7280; }
+  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+  footer { margin-top: 24px; font-size: .8rem; color: #666; text-align: center; }
+  footer a { color: #0066ff; }
+  .unsupported-msg { display: none; }
+  table.breakdown { width: 100%; border-collapse: collapse; font-size: .85rem; margin: 8px 0 0; }
+  table.breakdown th, table.breakdown td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #f0f0f0; }
+  table.breakdown th { color: #666; font-weight: 600; }
+  table.breakdown td.n, table.breakdown th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  #report-table h3 { margin: 18px 0 6px; } details { margin: 6px 0; } details ul { margin: 4px 0 8px 20px; font-size: .85rem; word-break: break-all; }
+  @media (max-width: 480px) { .stat-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Takeout Date Check</h1>
+  <p class="subtitle">Find which photos and videos in your Google Photos Takeout export are missing a date, and whether the date can be recovered from Google's .json files or the file name.</p>
+
+  <!-- Step 0: browser check -->
+  <div id="step-unsupported" class="step">
+    <div class="notice error">
+      <strong>Browser not supported.</strong> This check needs Chrome 86+ or Edge 86+.
+      It uses the File System Access API to read files locally. Your photos
+      never leave your computer.<br><br>
+      Please open this file in <strong>Microsoft Edge</strong> (built into Windows 10/11)
+      or <strong>Google Chrome</strong>.
+    </div>
+  </div>
+
+  <!-- Step 1: pick input folder -->
+  <div id="step-pick" class="step">
+    <p style="margin-bottom:16px">
+      Point this at the folder you unzipped your Google Takeout into. It reads the metadata
+      of <strong>every photo and video</strong> in it, plus the matching <code>.json</code>
+      files Google adds beside them, and shows how many are missing a date and whether the date can be recovered.
+    </p>
+    <div class="notice info">
+      <strong>Nothing is uploaded and nothing is changed.</strong> This check only reads
+      file dates in your browser. Your files are not modified, no file name or other detail
+      is sent anywhere, and the check works offline.
+    </div>
+    <br>
+    <button class="btn" id="btn-pick">
+      Select your Takeout folder
+    </button>
+    <p style="margin-top: 12px; font-size: .85rem; color: #666">
+      Unzip your Takeout download first, then choose the folder that contains
+      <code>Google Photos</code>. You can also choose the top-level <code>Takeout</code>
+      folder; subfolders are included.
+    </p>
+  </div>
+
+  <!-- Step 2: scanning -->
+  <div id="step-scanning" class="step">
+    <h2>Checking…</h2>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="scan-bar" style="width:0%"></div></div>
+    <p id="scan-status" style="font-size:.85rem; color:#666; margin-top:4px">Listing files…</p>
+  </div>
+
+  <!-- Step 3: report -->
+  <div id="step-report" class="step">
+    <h2>Your check</h2>
+    <div class="stat-grid" id="stat-grid"></div>
+    <div id="report-notice"></div>
+    <div id="report-table"></div>
+    <hr class="divider">
+    <p id="buy-text" style="margin-bottom:12px; font-size:.9rem"></p>
+    <div id="tool-links">
+    <a class="btn btn-secondary" id="btn-free-alt" href="https://github.com/Xentraxx/GooglePhotosTakeoutHelper_Neo">
+      Free command-line tool that writes the dates
+    </a>
+    <br><br>
+    <a class="btn btn-success" id="btn-buy" href="https://madrasco.dev/from/github/takeout">
+      About the paid tool that writes the dates
+    </a>
+    </div>
+    <br><br>
+    <button class="btn btn-secondary" id="btn-restart">Check another folder</button>
+  </div>
+</div>
+
+<footer>
+  Takeout Date Check by <a href="https://madrasco.dev">Madrasco</a> ·
+  Built and maintained by AI agents ·
+  <a href="mailto:support@madrasco.dev">Support</a>
+</footer>
+
+<script>
+'use strict';
+
+// Shared, read-only logic: finding Google sidecar files, reading the date already in a
+// file, and working out what each file needs. Nothing here writes or changes a file, so
+// the free check page can include this file on its own. The writing code lives in write.js
+// and is only built into the paid page.
+
+// ─── Sidecar finder ───────────────────────────────────────────────────────────
+// Google names a sidecar after the media file: photo.jpg -> photo.jpg.json, or (since 2025)
+// photo.jpg.supplemental-metadata.json. Names are cut so the part before ".json" is at most
+// 46 characters. A duplicate "photo(1).jpg" has its own sidecar "photo.jpg(1).json"
+// (or "photo.jpg.supplemental-metadata(1).json"): the (1) moves to just before ".json".
+const SUPP = '.supplemental-metadata';
+const NAME_LIMIT = 46;
+
+// Locale-specific edited suffixes, partly derived from GooglePhotosTakeoutHelper_Neo
+// lib/common/constants/extra_formats.dart (https://github.com/Xentraxx/GooglePhotosTakeoutHelper_Neo),
+// Apache License 2.0: see THIRD-PARTY-NOTICES.md and LICENSE-APACHE-2.0.txt in this repository.
+const EDITED_SUFFIXES = [
+  '-edited',          // English
+  '-bearbeitet',      // German
+  '-modifié',         // French
+  '-aangepast',       // Dutch
+  '-bewerkt',         // Dutch alt
+  '-redigert',        // Norwegian
+  '-redigerad',       // Swedish
+  '-muokattu',        // Finnish
+  '-modificato',      // Italian
+  '-editado',         // Spanish/Portuguese
+  '-szerkesztett',    // Hungarian
+  '-düzenlenmiş',     // Turkish
+  '-редактировано',   // Russian
+  '-已编辑',           // Chinese
+  '-編集済み',          // Japanese
+];
+
+// Index the .json files of one folder: key = lowercase core name + '|' + duplicate number.
+function indexSidecars(filesMap) {
+  const idx = new Map();
+  for (const [lname, handle] of filesMap) {
+    if (!lname.endsWith('.json')) continue;
+    let core = lname.slice(0, -5), k = '';
+    const m = core.match(/\((\d+)\)$/);
+    if (m) { k = m[1]; core = core.slice(0, m.index); }
+    if (!idx.has(core + '|' + k)) idx.set(core + '|' + k, handle);
+  }
+  return idx;
+}
+
+function splitName(name) {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+}
+
+// Ordered (root, duplicate-number) guesses for a media file name.
+function sidecarRoots(stem) {
+  const roots = [];
+  const add = (root, k) => { if (root && !roots.some(r => r.root === root && r.k === k)) roots.push({ root, k }); };
+  const dm = stem.match(/^(.*)\((\d+)\)$/);
+  if (dm) { add(dm[1], dm[2]); add(dm[1], ''); }
+  add(stem, '');
+  for (const r of roots.slice()) {
+    const low = r.root.toLowerCase();
+    for (const suf of EDITED_SUFFIXES) {
+      if (low.endsWith(suf)) { add(r.root.slice(0, r.root.length - suf.length), r.k); add(r.root.slice(0, r.root.length - suf.length), ''); break; }
+    }
+  }
+  return roots;
+}
+
+function findSidecar(name, idx) {
+  const [stem, ext] = splitName(name);
+  for (const { root, k } of sidecarRoots(stem)) {
+    const withExt = (root + ext).toLowerCase();
+    const cores = [withExt + SUPP, withExt, root.toLowerCase()];
+    for (const core of cores) {
+      const keys = [core];
+      if (core.length > NAME_LIMIT) keys.push(core.slice(0, NAME_LIMIT));
+      for (const key of keys) {
+        const h = idx.get(key + '|' + k);
+        if (h) return h;
+      }
+    }
+  }
+  return null;
+}
+
+// ─── Filename date guesser ────────────────────────────────────────────────────
+function guessDateFromName(name) {
+  // IMG_20231015_083042, PXL_20221201_140000, YYYYMMDD_HHMMSS, etc.
+  const pat = /(?:^|[_\-])(\d{4})(\d{2})(\d{2})[_\-T]?(\d{2})(\d{2})(\d{2})/;
+  const m = name.match(pat);
+  if (!m) return null;
+  const [, Y, Mo, D, H, Mi, S] = m;
+  const yr = parseInt(Y), mo = parseInt(Mo), dy = parseInt(D);
+  if (yr < 2000 || yr > 2100 || mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
+  const d = new Date(Date.UTC(yr, mo - 1, dy, parseInt(H), parseInt(Mi), parseInt(S)));
+  if (isNaN(d.getTime())) return null;
+  return Math.floor(d.getTime() / 1000);
+}
+
+// ─── Sidecar parser ───────────────────────────────────────────────────────────
+async function parseSidecar(handle) {
+  const file = await handle.getFile();
+  let obj;
+  try { obj = JSON.parse(await file.text()); } catch { return null; }
+  const ts = parseInt(obj?.photoTakenTime?.timestamp);
+  if (!ts || isNaN(ts)) return null;
+  const lat = obj?.geoData?.latitude ?? obj?.geoDataExif?.latitude ?? null;
+  const lon = obj?.geoData?.longitude ?? obj?.geoDataExif?.longitude ?? null;
+  const alt = obj?.geoData?.altitude ?? obj?.geoDataExif?.altitude ?? null;
+  // GPS 0,0 means absent
+  const hasGps = (lat !== null && lon !== null && (lat !== 0 || lon !== 0));
+  return {
+    ts,
+    lat: hasGps ? lat : null,
+    lon: hasGps ? lon : null,
+    alt: hasGps ? alt : null,
+  };
+}
+
+// ─── Byte helpers (work on Uint8Array and on Blob/File slices) ────────────────
+// A "source" is anything with .size (File/Blob) or .byteLength (Uint8Array/Buffer) and a
+// .slice(start, end) that returns one of those. The browser passes a File; the tests pass
+// a Buffer. Only the bytes actually needed are read, so large videos stay cheap.
+function sourceSize(source) {
+  return source.size !== undefined ? source.size : source.byteLength;
+}
+
+async function sliceBytes(source, start, end) {
+  const part = source.slice(start, end);
+  // A Blob/File slice has arrayBuffer(); a Uint8Array (or Node Buffer) slice is the bytes
+  // already. Test for the method rather than instanceof, which fails across realms.
+  if (part && typeof part.arrayBuffer === 'function') return new Uint8Array(await part.arrayBuffer());
+  return part;
+}
+
+const be32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const be64 = (b, o) => be32(b, o) * 4294967296 + be32(b, o + 4);
+const ascii4 = (b, o) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+
+// ─── Formats ──────────────────────────────────────────────────────────────────
+const MEDIA_EXTS = new Set([
+  '.jpg', '.jpeg', '.png', '.heic', '.heif',
+  '.gif', '.bmp', '.webp', '.tif', '.tiff',
+  '.mp4', '.mov', '.avi', '.mkv', '.3gp', '.m4v'
+]);
+
+const isMediaName = name => {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 && MEDIA_EXTS.has(name.slice(dot).toLowerCase());
+};
+
+// 'jpeg' | 'png' | 'mp4' (an ISO base media file: MP4, MOV, M4V) | 'other'
+function mediaKind(ext) {
+  if (ext === '.jpg' || ext === '.jpeg') return 'jpeg';
+  if (ext === '.png') return 'png';
+  if (ext === '.mp4' || ext === '.mov' || ext === '.m4v') return 'mp4';
+  return 'other';
+}
+
+// ─── EXIF (TIFF) reader, shared by JPEG and PNG ───────────────────────────────
+// Read what a TIFF/EXIF block holds: { hasDate, orientation, make, model } or null when
+// there is no readable block. { corrupt: true } when a block exists but cannot be read.
+// strict (used for PNG eXIf): also require the TIFF magic number 42 and every directory
+// entry's value to lie inside the block, so a block no EXIF reader accepts is refused.
+function parseTiffBlock(bytes, base, end, strict) {
+  if (base + 8 > end) return { corrupt: true };
+  const le = bytes[base] === 0x49;
+  if (!(le || bytes[base] === 0x4D)) return { corrupt: true };
+  if (strict && bytes[base] !== bytes[base + 1]) return { corrupt: true };
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const r16 = o => { if (o + 2 > end) throw 0; return dv.getUint16(o, le); };
+  const r32 = o => { if (o + 4 > end) throw 0; return dv.getUint32(o, le); };
+  const readIfd = off => {
+    const map = new Map();
+    const n = r16(base + off);
+    for (let i = 0; i < n; i++) {
+      const e = base + off + 2 + i * 12;
+      const tag = r16(e), type = r16(e + 2), count = r32(e + 4);
+      const size = ({ 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 }[type] || 1) * count;
+      const vo = size <= 4 ? e + 8 : base + r32(e + 8);
+      if (strict && (type < 1 || type > 12 || vo + size > end)) throw 0;
+      map.set(tag, { type, count, vo, size });
+    }
+    return map;
+  };
+  const str = e => { if (!e || e.vo + e.size > end) return ''; let s = ''; for (let i = 0; i < e.size; i++) { const c = bytes[e.vo + i]; if (!c) break; s += String.fromCharCode(c); } return s; };
+  if (strict) {
+    const magic = dv.getUint16(base + 2, le);
+    if (magic !== 42 || r32(base + 4) < 8) return { corrupt: true };
+  }
+  const ifd0 = readIfd(r32(base + 4));
+  const out = { hasDate: false, orientation: 0, make: str(ifd0.get(0x010F)), model: str(ifd0.get(0x0110)) };
+  const o = ifd0.get(0x0112); if (o && o.type === 3) out.orientation = r16(o.vo);
+  const dated0 = str(ifd0.get(0x0132));
+  if (/^(?!0000)\d{4}:\d\d:\d\d \d\d:\d\d:\d\d/.test(dated0)) out.hasDate = true;
+  const ep = ifd0.get(0x8769);
+  if (ep) {
+    const ex = readIfd(r32(ep.vo));
+    for (const tag of [0x9003, 0x9004]) {
+      const d = str(ex.get(tag));
+      if (/^(?!0000)\d{4}:\d\d:\d\d \d\d:\d\d:\d\d/.test(d)) { out.hasDate = true; break; }
+    }
+  }
+  return out;
+}
+
+// Walk the JPEG segments before the image data.
+function jpegSegments(j) {
+  const segs = [];
+  let pos = 2;
+  while (pos + 4 <= j.length && j[pos] === 0xFF) {
+    const marker = j[pos + 1];
+    if (marker === 0xFF) { pos++; continue; }
+    if (marker === 0xDA || marker === 0xD9) break;
+    const len = (j[pos + 2] << 8) | j[pos + 3];
+    if (len < 2 || pos + 2 + len > j.length) break;
+    segs.push({ marker, start: pos, end: pos + 2 + len });
+    pos += 2 + len;
+  }
+  return { segs, dataStart: pos };
+}
+const isExifSeg = (j, s) => s.marker === 0xE1 && j[s.start + 4] === 0x45 && j[s.start + 5] === 0x78 &&
+  j[s.start + 6] === 0x69 && j[s.start + 7] === 0x66 && j[s.start + 8] === 0 && j[s.start + 9] === 0;
+
+// Read a JPEG's existing EXIF: the block, or null when the file has none.
+function readExistingExif(j) {
+  if (j.length < 4 || j[0] !== 0xFF || j[1] !== 0xD8) return null;
+  const { segs } = jpegSegments(j);
+  const seg = segs.find(s => isExifSeg(j, s));
+  if (!seg) return null;
+  try { return parseTiffBlock(j, seg.start + 10, seg.end); }
+  catch (e) { return { corrupt: true }; }
+}
+
+// ─── CRC32 (the PNG checksum, used by both the reader and the writer) ─────────
+let _crcTable = null;
+function crcTable() {
+  if (_crcTable) return _crcTable;
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  _crcTable = t;
+  return t;
+}
+function crc32(bytes) {
+  const t = crcTable();
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ─── PNG reader ───────────────────────────────────────────────────────────────
+const PNG_SIG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+// Whether the file already carries a date, and where its eXIf chunk is.
+// A PNG date lives in an eXIf chunk (what ExifTool writes; the specification allows one,
+// before IDAT) or, in the older convention, in a tEXt chunk whose keyword is
+// "Creation Time" (allowed anywhere, so chunk headers are walked all the way to IEND).
+// The structure is checked as it is read: the first chunk must be IHDR, every chunk
+// must lie inside the file and carry the CRC32 of its own type and data, eXIf must come
+// before IDAT and at most once, its TIFF block must parse, one IDAT and the IEND are
+// required, and nothing may follow the IEND. A PNG that fails any of these is reported
+// corrupt and is left untouched: nothing here can tell which part of it is damaged.
+async function readPngExisting(source) {
+  const size = sourceSize(source);
+  if (size < 8) return { corrupt: true };
+  const sig = await sliceBytes(source, 0, 8);
+  if (sig.length < 8 || !PNG_SIG.every((v, i) => sig[i] === v)) return { corrupt: true };
+  const out = { ok: true, hasDate: false, textDate: null, exifChunk: null, exifDate: null };
+  let pos = 8, first = true, sawIend = false, sawPlte = false;
+  let ihdr = null, idat = [], idatClosed = false;
+  while (pos !== size) {
+    if (pos + 8 > size) return { corrupt: true };
+    const hdr = await sliceBytes(source, pos, pos + 8);
+    const len = be32(hdr, 0);
+    const type = ascii4(hdr, 4);
+    if (len > 0x7FFFFFFF) return { corrupt: true };
+    const dataStart = pos + 8, end = dataStart + len + 4;
+    if (end > size) return { corrupt: true };
+    if (first) {
+      if (type !== 'IHDR' || len !== 13) return { corrupt: true };
+      first = false;
+    } else if (type === 'IHDR') return { corrupt: true };           // exactly one IHDR
+    const stored = be32(await sliceBytes(source, dataStart + len, end), 0);
+    if (await chunkCrc(source, hdr.subarray(4, 8), dataStart, len) !== stored) return { corrupt: true };
+    if (type === 'IHDR') {
+      ihdr = pngHeaderFields(await sliceBytes(source, dataStart, dataStart + 13));
+      if (!ihdr) return { corrupt: true };
+    } else if (type === 'PLTE') {
+      // one palette, before the image data, a whole number of RGB entries, never in a
+      // greyscale image; a truecolour image may carry one as a suggestion
+      if (sawPlte || idat.length || ihdr.colorType === 0 || ihdr.colorType === 4) return { corrupt: true };
+      if (len === 0 || len % 3 !== 0 || len / 3 > 256) return { corrupt: true };
+      if (ihdr.colorType === 3 && len / 3 > (1 << ihdr.bitDepth)) return { corrupt: true };
+      sawPlte = true;
+    } else if (type === 'eXIf') {
+      if (idat.length || out.exifChunk) return { corrupt: true };
+      out.exifChunk = { start: pos, end };
+      const data = await sliceBytes(source, dataStart, dataStart + len);
+      let parsed = null;
+      try { parsed = parseTiffBlock(data, 0, data.length, true); } catch (e) { parsed = { corrupt: true }; }
+      if (!parsed || parsed.corrupt) return { corrupt: true };
+      out.exifDate = parsed;
+      if (parsed.hasDate) out.hasDate = true;
+    } else if (type === 'tEXt') {
+      const data = await sliceBytes(source, dataStart, Math.min(dataStart + 1024, dataStart + len));
+      const s = latin1(data);
+      const i = s.indexOf('\0');
+      if (i > 0 && s.slice(0, i) === 'Creation Time') {
+        const v = s.slice(i + 1).trim();
+        if (v) { out.textDate = v; out.hasDate = true; }
+      }
+    } else if (type === 'IDAT') {
+      if (idatClosed) return { corrupt: true };                     // IDAT chunks must be consecutive
+      idat.push({ start: dataStart, len });
+    } else if (type === 'IEND') {
+      if (len !== 0) return { corrupt: true };
+      sawIend = true;
+      pos = end;
+      break;
+    }
+    if (type !== 'IDAT' && idat.length) idatClosed = true;
+    pos = end;
+  }
+  if (!ihdr || !idat.length || !sawIend || pos !== size) return { corrupt: true };
+  if (ihdr.colorType === 3 && !sawPlte) return { corrupt: true };    // an indexed image needs its palette
+  if (!(await pngImageDataReadable(source, idat, ihdr))) return { corrupt: true };
+  return out;
+}
+
+// IHDR fields, or null when any value is one the PNG specification does not allow.
+function pngHeaderFields(b) {
+  const width = be32(b, 0), height = be32(b, 4);
+  const bitDepth = b[8], colorType = b[9];
+  if (width < 1 || height < 1 || width > 0x7FFFFFFF || height > 0x7FFFFFFF) return null;
+  const allowed = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] }[colorType];
+  if (!allowed || !allowed.includes(bitDepth)) return null;
+  if (b[10] !== 0 || b[11] !== 0 || (b[12] !== 0 && b[12] !== 1)) return null;
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType];
+  return { width, height, bitDepth, colorType, interlace: b[12], bitsPerPixel: channels * bitDepth };
+}
+
+// The row layout the decompressed image data must have: a list of [rows, bytesPerRow],
+// each row carrying one leading filter byte.
+function pngRowLayout(h) {
+  const rowBytes = w => Math.ceil(w * h.bitsPerPixel / 8);
+  if (!h.interlace) return [[h.height, rowBytes(h.width)]];
+  const passes = [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]];
+  const out = [];
+  for (const [x0, y0, dx, dy] of passes) {
+    const w = Math.ceil((h.width - x0) / dx), r = Math.ceil((h.height - y0) / dy);
+    if (w > 0 && r > 0) out.push([r, rowBytes(w)]);
+  }
+  return out;
+}
+
+// Does the image data decompress to exactly the rows the header promises, with a valid
+// filter byte on each row, a correct zlib header and a matching Adler-32 checksum? Uses a
+// small inflate of our own (a port of the algorithm in zlib's puff.c) rather than the
+// browser's, so the answer is the same on every browser and the free check, the paid page
+// and the tests agree. The decompressed bytes are never kept: only a 32 KB window.
+async function pngImageDataReadable(source, idat, h) {
+  let total = 0;
+  const layout = pngRowLayout(h);
+  for (const [r, b] of layout) total += r * (b + 1);
+  let n = 0; for (const c of idat) n += c.len;
+  const data = new Uint8Array(n);
+  let o = 0;
+  for (const c of idat) {
+    for (let p = 0; p < c.len; p += 4194304) {
+      const part = await sliceBytes(source, c.start + p, c.start + Math.min(c.len, p + 4194304));
+      data.set(part, o); o += part.length;
+    }
+  }
+  let li = 0, rowsLeft = layout[0][0], rowLen = layout[0][1] + 1, inRow = 0, produced = 0;
+  let a1 = 1, a2 = 0;
+  const sink = b => {                      // one decompressed byte
+    if (li >= layout.length) throw 0;      // more data than rows
+    if (inRow === 0 && b > 4) throw 0;     // filter type must be 0..4
+    produced++;
+    if (++inRow === rowLen) {
+      inRow = 0;
+      if (--rowsLeft === 0) { li++; if (li < layout.length) { rowsLeft = layout[li][0]; rowLen = layout[li][1] + 1; } }
+    }
+    a1 += b; if (a1 >= 65521) a1 -= 65521;
+    a2 += a1; if (a2 >= 65521) a2 -= 65521;
+  };
+  try {
+    if (data.length < 6 || (data[0] & 15) !== 8 || (data[0] >> 4) > 7 || ((data[0] << 8) | data[1]) % 31 !== 0 || (data[1] & 32)) return false;
+    const end = inflateRaw(data, 2, sink);
+    if (end + 4 !== data.length) return false;
+    if (be32(data, end) !== (((a2 << 16) | a1) >>> 0)) return false;
+  } catch (e) {
+    return false;
+  }
+  return produced === total;
+}
+
+// Inflate (RFC 1951) data[pos..], calling sink(byte) for every output byte; returns the
+// offset just past the compressed stream. Throws on any invalid data. Follows puff.c.
+function inflateRaw(data, pos, sink) {
+  const win = new Uint8Array(32768); let wp = 0, wn = 0;
+  let bitbuf = 0, bitcnt = 0;
+  const bits = need => {
+    let v = bitbuf;
+    while (bitcnt < need) {
+      if (pos >= data.length) throw 0;
+      v |= data[pos++] << bitcnt; bitcnt += 8;
+    }
+    bitbuf = v >>> need; bitcnt -= need;
+    return v & ((1 << need) - 1);
+  };
+  const out = b => { win[wp] = b; wp = (wp + 1) & 32767; if (wn < 32768) wn++; sink(b); };
+  const build = (lengths, n) => {
+    const count = new Uint16Array(16), symbol = new Uint16Array(n);
+    for (let i = 0; i < n; i++) count[lengths[i]]++;
+    let left = 1;
+    for (let l = 1; l < 16; l++) { left = (left << 1) - count[l]; if (left < 0) throw 0; }
+    const offs = new Uint16Array(16);
+    for (let l = 1; l < 15; l++) offs[l + 1] = offs[l] + count[l];
+    for (let i = 0; i < n; i++) if (lengths[i]) symbol[offs[lengths[i]]++] = i;
+    return { count, symbol, incomplete: left > 0 };
+  };
+  const decode = h => {
+    let code = 0, first = 0, index = 0;
+    for (let l = 1; l < 16; l++) {
+      code |= bits(1);
+      const c = h.count[l];
+      if (code - c < first) return h.symbol[index + (code - first)];
+      index += c; first += c; first <<= 1; code <<= 1;
+    }
+    throw 0;
+  };
+  const LBASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  const LEXT = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  const DBASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  const DEXT = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  const codes = (lc, dc) => {
+    for (;;) {
+      let sym = decode(lc);
+      if (sym < 256) out(sym);
+      else if (sym === 256) return;
+      else {
+        sym -= 257; if (sym >= 29) throw 0;
+        const len = LBASE[sym] + bits(LEXT[sym]);
+        const ds = decode(dc); if (ds >= 30) throw 0;
+        const dist = DBASE[ds] + bits(DEXT[ds]);
+        if (dist > wn) throw 0;
+        for (let i = 0; i < len; i++) out(win[(wp - dist) & 32767]);
+      }
+    }
+  };
+  let fixed = null;
+  let last;
+  do {
+    last = bits(1);
+    const type = bits(2);
+    if (type === 0) {
+      bitbuf = 0; bitcnt = 0;
+      if (pos + 4 > data.length) throw 0;
+      const len = data[pos] | (data[pos + 1] << 8), nlen = data[pos + 2] | (data[pos + 3] << 8);
+      if ((len ^ 0xFFFF) !== nlen) throw 0;
+      pos += 4;
+      if (pos + len > data.length) throw 0;
+      for (let i = 0; i < len; i++) out(data[pos++]);
+    } else if (type === 1) {
+      if (!fixed) {
+        const l = new Uint8Array(288);
+        for (let i = 0; i < 144; i++) l[i] = 8;
+        for (let i = 144; i < 256; i++) l[i] = 9;
+        for (let i = 256; i < 280; i++) l[i] = 7;
+        for (let i = 280; i < 288; i++) l[i] = 8;
+        fixed = [build(l, 288), build(new Uint8Array(30).fill(5), 30)];
+      }
+      codes(fixed[0], fixed[1]);
+    } else if (type === 2) {
+      const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
+      if (nlen > 286 || ndist > 30) throw 0;
+      const ORDER = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+      const lengths = new Uint8Array(320);
+      for (let i = 0; i < ncode; i++) lengths[ORDER[i]] = bits(3);
+      const lencode = build(lengths, 19);
+      if (lencode.incomplete) throw 0;
+      const ll = new Uint8Array(320);
+      for (let i = 0; i < nlen + ndist;) {
+        const sym = decode(lencode);
+        if (sym < 16) ll[i++] = sym;
+        else {
+          let rep, val = 0;
+          if (sym === 16) { if (i === 0) throw 0; val = ll[i - 1]; rep = 3 + bits(2); }
+          else if (sym === 17) rep = 3 + bits(3);
+          else rep = 11 + bits(7);
+          if (i + rep > nlen + ndist) throw 0;
+          while (rep--) ll[i++] = val;
+        }
+      }
+      if (ll[256] === 0) throw 0;
+      const lc = build(ll.subarray(0, nlen), nlen);
+      if (lc.incomplete && nlen - lc.count[0] - lc.count[1] !== 0) throw 0;
+      const dc = build(ll.subarray(nlen, nlen + ndist), ndist);
+      if (dc.incomplete && ndist - dc.count[0] - dc.count[1] !== 0) throw 0;
+      codes(lc, dc);
+    } else throw 0;
+  } while (!last);
+  bitbuf = 0; bitcnt = 0;
+  return pos;
+}
+
+// CRC32 of a chunk's type and data, read in bounded slices so a large IDAT chunk is
+// never held in memory whole.
+async function chunkCrc(source, typeBytes, dataStart, len) {
+  const t = crcTable();
+  let c = 0xFFFFFFFF;
+  const push = b => { for (let i = 0; i < b.length; i++) c = t[(c ^ b[i]) & 0xFF] ^ (c >>> 8); };
+  push(typeBytes);
+  let pos = 0;
+  while (pos < len) {
+    const n = Math.min(65536, len - pos);
+    push(await sliceBytes(source, dataStart + pos, dataStart + pos + n));
+    pos += n;
+  }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function latin1(b) { let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return s; }
+
+// ─── MP4 / MOV (ISO base media) reader ────────────────────────────────────────
+// Creation and modification times live in the mvhd, tkhd and mdhd boxes, as seconds
+// since 1904-01-01 UTC. Only box headers and those boxes are read, never the media data.
+const MP4_EPOCH_DELTA = 2082844800;   // seconds between 1904-01-01 and 1970-01-01
+
+// Walk the boxes in [start, end). Returns false if the structure is damaged (a box that
+// runs past end, a header cut short, 1-7 stray bytes left over); true when every box was
+// read, or when `visit` stopped the walk early by returning false.
+async function walkBoxes(source, start, end, visit) {
+  let pos = start;
+  while (pos < end) {
+    if (pos + 8 > end) return false;
+    const hdr = await sliceBytes(source, pos, Math.min(pos + 16, end));
+    if (hdr.length < 8) return false;
+    let size = be32(hdr, 0);
+    const type = ascii4(hdr, 4);
+    let headerSize = 8;
+    if (size === 1) { if (hdr.length < 16) return false; size = be64(hdr, 8); headerSize = 16; }
+    else if (size === 0) size = end - pos;
+    if (size < headerSize || pos + size > end) return false;
+    if (await visit(type, pos, pos + headerSize, pos + size) === false) return true;
+    pos += size;
+  }
+  return pos === end;
+}
+
+// A stored time field is "set" unless it is all zeros or all ones: those are the values
+// the format's writers use for "no time recorded". Any other value is a real stored time,
+// whatever year it lands in (a 1985 recording is a real date, not a corrupt one).
+function fieldHasTime(b, o, n) {
+  let zero = true, ones = true;
+  for (let i = 0; i < n; i++) { if (b[o + i] !== 0) zero = false; if (b[o + i] !== 0xFF) ones = false; }
+  return !zero && !ones;
+}
+
+// Can this Unix time be stored in the 32-bit MP4 time fields the writer patches?
+// Read-only, so the scan can refuse the same files the writer would refuse.
+function mp4TimeRepresentable(ts) {
+  if (ts === null || ts === undefined || !Number.isFinite(ts)) return false;
+  const t = Math.round(ts) + MP4_EPOCH_DELTA;
+  return t >= 0 && t <= 4294967295;
+}
+
+// Which date is already in this video? returns { ok, hasDate, times } or { corrupt: true }.
+// A file counts as dated when any recognised creation or modification time in mvhd, tkhd
+// or mdhd holds a value, not only the movie header: a file whose movie header is zero but
+// whose tracks carry a date is a dated file and is copied unchanged.
+async function readMp4Existing(source) {
+  const t = await readMp4Times(source);
+  if (!t.ok) return { corrupt: true, reason: t.reason };
+  const boxes = [t.times.mvhd].concat(t.times.tkhd, t.times.mdhd).filter(Boolean);
+  const hasDate = boxes.some(r => r.ctSet || r.mtSet);
+  return { ok: true, hasDate, times: t.times };
+}
+
+// The date fields of every mvhd, tkhd and mdhd, or a reason the file cannot be read.
+// Requires a moov box that parses, an mvhd inside it, and every time box to be a version
+// this tool knows (0 or 1): an unknown version is refused rather than misread.
+async function readMp4Times(source) {
+  const size = sourceSize(source);
+  let moov = null, moovCount = 0;
+  // Walk every top-level box header to the end of the file (media payloads are not read),
+  // so stray bytes after the movie box are caught as well.
+  const topOk = await walkBoxes(source, 0, size, (type, start, payloadStart, end) => {
+    if (type === 'moov') { moovCount++; moov = { payloadStart, end }; }
+  });
+  if (!topOk) return { ok: false, reason: 'the top-level box structure is damaged' };
+  if (!moov) return { ok: false, reason: 'no movie box (moov) found' };
+  if (moovCount > 1) return { ok: false, reason: 'more than one movie box (moov)' };
+  const times = { mvhd: null, tkhd: [], mdhd: [] };
+  let bad = null, mvhdCount = 0, tracks = 0;
+
+  // Reads one time box. `fixed` = the full payload length for [version 0, version 1], so a
+  // header cut short, or one with a zero timescale, is refused rather than patched.
+  const readBoxTimes = async (payloadStart, end, fixed, timescaleAt) => {
+    const hdr = await sliceBytes(source, payloadStart, Math.min(payloadStart + 4, end));
+    if (hdr.length < 4) { bad = bad || 'a movie header box is cut short'; return null; }
+    const version = hdr[0];
+    if (version !== 0 && version !== 1) {
+      bad = bad || `a movie header box uses version ${version}, which this tool does not know`;
+      return null;
+    }
+    const width = version === 1 ? 8 : 4;
+    if (end - payloadStart < fixed[version]) { bad = bad || 'a movie header box is cut short'; return null; }
+    const b = await sliceBytes(source, payloadStart + 4, payloadStart + fixed[version]);
+    if (b.length < fixed[version] - 4) { bad = bad || 'a movie header box is cut short'; return null; }
+    if (timescaleAt && be32(b, width * 2) === 0) { bad = bad || 'a header has a zero timescale'; return null; }
+    return {
+      version,
+      ct: version === 1 ? be64(b, 0) : be32(b, 0),
+      mt: version === 1 ? be64(b, width) : be32(b, width),
+      ctSet: fieldHasTime(b, 0, width),
+      mtSet: fieldHasTime(b, width, width),
+      ctOffset: payloadStart + 4,
+      mtOffset: payloadStart + 4 + width,
+    };
+  };
+  const MVHD = [100, 112], TKHD = [84, 96], MDHD = [24, 36];
+
+  const moovOk = await walkBoxes(source, moov.payloadStart, moov.end, async (type, start, payloadStart, end) => {
+    if (type === 'mvhd') { mvhdCount++; times.mvhd = await readBoxTimes(payloadStart, end, MVHD, true); }
+    else if (type === 'trak') {
+      tracks++;
+      let tk = 0, md = 0;
+      const trakOk = await walkBoxes(source, payloadStart, end, async (t2, s2, p2, e2) => {
+        if (t2 === 'tkhd') { tk++; const r = await readBoxTimes(p2, e2, TKHD, false); if (r) times.tkhd.push(r); }
+        else if (t2 === 'mdia') {
+          const mdiaOk = await walkBoxes(source, p2, e2, async (t3, s3, p3, e3) => {
+            if (t3 === 'mdhd') { md++; const r = await readBoxTimes(p3, e3, MDHD, true); if (r) times.mdhd.push(r); }
+          });
+          if (!mdiaOk) bad = bad || 'a track is damaged';
+        }
+      });
+      if (!trakOk) bad = bad || 'a track is damaged';
+      else if (tk !== 1 || md !== 1) bad = bad || 'a track is missing its header (tkhd) or media header (mdhd)';
+    }
+  });
+  if (!moovOk) return { ok: false, reason: 'the movie box (moov) is damaged' };
+  if (bad) return { ok: false, reason: bad };
+  if (mvhdCount !== 1 || !times.mvhd) return { ok: false, reason: 'the movie header box (mvhd) is missing or repeated' };
+  if (!tracks) return { ok: false, reason: 'the movie has no tracks' };
+  return { ok: true, times };
+}
+
+// ─── Read one media file's own date, whatever its format ──────────────────────
+async function readMediaExisting(file, kind) {
+  try {
+    if (kind === 'jpeg') {
+      const head = new Uint8Array(await file.slice(0, 262144).arrayBuffer());
+      return (head.length < 4 || head[0] !== 0xFF || head[1] !== 0xD8) ? { corrupt: true } : readExistingExif(head);
+    }
+    if (kind === 'png') return await readPngExisting(file);
+    if (kind === 'mp4') return await readMp4Existing(file);
+  } catch (e) {
+    return { corrupt: true };
+  }
+  return null;
+}
+
+// ─── Recursive directory scan ─────────────────────────────────────────────────
+// Reads every directory under the chosen folder (up to maxFiles entries), then reads the
+// metadata of every media file, or of a spread-out sample of them when sampleLimit is set.
+async function collectTree(rootDirHandle, onProgress, opts) {
+  const maxFiles = opts.maxFiles || 200000;
+  const dirs = [];
+  const media = [];
+  let files = 0, truncated = false;
+
+  async function rec(dirHandle, path) {
+    const handles = new Map();
+    const subdirs = [];
+    const names = [];
+    for await (const [name, h] of dirHandle.entries()) names.push([name, h]);
+    names.sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [name, h] of names) {
+      if (h.kind === 'directory') { subdirs.push([name, h]); continue; }
+      handles.set(name.toLowerCase(), h);
+      files++;
+      if (isMediaName(name)) media.push({ dirPath: path, dirHandle, handle: h, name });
+    }
+    dirs.push({ dirPath: path, dirHandle, handles });
+    if (onProgress && files % 500 === 0) onProgress(files);
+    if (files >= maxFiles) { truncated = true; return; }
+    for (const [name, h] of subdirs) {
+      await rec(h, path ? path + '/' + name : name);
+      if (files >= maxFiles) { truncated = true; return; }
+    }
+  }
+
+  await rec(rootDirHandle, '');
+  return { dirs, media, files, truncated };
+}
+
+function evenlySample(list, n) {
+  if (list.length <= n) return list.slice();
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(list[Math.floor(i * list.length / n)]);
+  return out;
+}
+
+// Returns one record per examined media file:
+//   { dirHandle, handle, name, ext, stem, dirPath, kind, sidecarHandle, sidecarData,
+//     nameDate, existing }
+async function scanFolder(rootDirHandle, onProgress, opts) {
+  opts = opts || {};
+  const { dirs, media, files, truncated } = await collectTree(rootDirHandle, n => {
+    if (onProgress) onProgress(0, 0, `Listing files… ${n}`);
+  }, opts);
+
+  const sampleLimit = opts.sampleLimit || null;
+  let picked = media, sampled = false;
+  if (sampleLimit && media.length > sampleLimit) {
+    picked = evenlySample(media, sampleLimit);
+    sampled = true;
+  }
+
+  const byDir = new Map(dirs.map(d => [d.dirPath, d]));
+  const idxCache = new Map();
+  if (onProgress) onProgress(0, picked.length, `Reading metadata… 0/${picked.length}`);
+
+  const results = [];
+  let n = 0;
+  for (const m of picked) {
+    const dir = byDir.get(m.dirPath);
+    if (!dir) continue;
+    if (!idxCache.has(m.dirPath)) idxCache.set(m.dirPath, indexSidecars(dir.handles));
+    const idx = idxCache.get(m.dirPath);
+
+    const file = await m.handle.getFile();
+    const [stem, ext] = splitName(file.name);
+    const kind = mediaKind(ext.toLowerCase());
+
+    const sidecarHandle = findSidecar(file.name, idx);
+    const sidecarData = sidecarHandle ? await parseSidecar(sidecarHandle) : null;
+    const existing = await readMediaExisting(file, kind);
+
+    results.push({
+      dirHandle: m.dirHandle, handle: m.handle, name: file.name, ext: ext.toLowerCase(),
+      stem, dirPath: m.dirPath, kind, sidecarHandle, sidecarData,
+      nameDate: guessDateFromName(file.name), existing,
+    });
+
+    n++;
+    if (onProgress && n % 10 === 0) onProgress(n, picked.length, `Reading metadata… ${n}/${picked.length}`);
+  }
+
+  if (onProgress) onProgress(picked.length, picked.length, 'Scan complete.');
+  return { results, totalMedia: media.length, scanned: results.length, sampled, truncated };
+}
+
+// ─── Classify results ─────────────────────────────────────────────────────────
+// Sets r.bestDate and r.action on every record:
+//   'write'    the file has no date of its own, this format can carry one, and we know it
+//   'has-date' the file already has a date (copied unchanged)
+//   'format'   a date is known but this format cannot carry one (HEIC, GIF, AVI, ...)
+//   'corrupt'  the file could not be read as the format its name claims
+//   'no-date'  no date anywhere (copied unchanged)
+//   'range'    a video date is known but is too far from 1970 to store in its header
+//              (copied unchanged; the same read-only check the writer uses)
+function classifyResults(results) {
+  const c = { write: 0, 'has-date': 0, format: 0, corrupt: 0, 'no-date': 0, range: 0 };
+  for (const r of results) {
+    r.bestDate = r.sidecarData?.ts ?? r.nameDate ?? null;
+    const writable = r.kind === 'jpeg' || r.kind === 'png' || r.kind === 'mp4';
+    if (!writable) r.action = r.bestDate ? 'format' : 'no-date';
+    else if (r.existing?.corrupt) r.action = 'corrupt';
+    else if (r.existing?.hasDate) r.action = 'has-date';
+    else if (!r.bestDate) r.action = 'no-date';
+    else if (r.kind === 'mp4' && !mp4TimeRepresentable(r.bestDate)) r.action = 'range';
+    else r.action = 'write';
+    c[r.action]++;
+  }
+  return c;
+}
+
+// Small pieces of page used by both the free check and the paid tool.
+
+function showStep(id) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function stat(num, label, cls) {
+  return `<div class="stat ${cls || ''}"><div class="num">${num}</div><div class="label">${label}</div></div>`;
+}
+
+const KIND_LABEL = {
+  jpeg: 'JPEG photo',
+  png: 'PNG image',
+  mp4: 'MP4 / MOV video',
+  other: 'Other format',
+};
+
+// Rows: format, how many were checked, how many would get a date.
+function breakdownTable(results) {
+  const rows = new Map();
+  for (const r of results) {
+    const k = r.kind;
+    if (!rows.has(k)) rows.set(k, { kind: k, files: 0, fix: 0, undated: 0, range: 0 });
+    const row = rows.get(k);
+    row.files++;
+    if (r.action === 'write') row.fix++;
+    else if (r.action === 'no-date') row.undated++;
+    else if (r.action === 'range') row.range++;
+  }
+  const order = ['jpeg', 'png', 'mp4', 'other'];
+  const sorted = [...rows.values()].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  if (!sorted.length) return '';
+  const body = sorted.map(row => {
+    const bits = [];
+    if (row.undated > 0) bits.push(`${row.undated} with no date found`);
+    if (row.range > 0) bits.push(`${row.range} dated too far from 1970 for a video header`);
+    const note = row.kind === 'other' ? 'not covered by this check' : bits.join('; ');
+    return `<tr><td>${KIND_LABEL[row.kind]}</td><td class="n">${row.files}</td>` +
+           `<td class="n">${row.fix}</td><td>${note}</td></tr>`;
+  }).join('');
+  return `<table class="breakdown"><tr><th>Format</th><th class="n">Checked</th>` +
+         `<th class="n">Would get a date</th><th>Notes</th></tr>${body}</table>`;
+}
+
+// When most of the files checked have no matching .json file beside them, the likely cause is
+// how the export was unzipped (Takeout parts in separate folders) or the wrong folder, not a
+// library that needs nothing. Returns a sentence, or '' when most files have their JSON.
+function missingJsonNote(results) {
+  const n = results.length;
+  const none = results.filter(r => !r.sidecarHandle).length;
+  if (n === 0 || none * 2 < n) return '';
+  return `${none} of the ${n} file(s) have no matching .json file beside them. If you expected one for each, ` +
+    `unzip every part of your Takeout download into one folder (the .json file must sit in the same folder as its photo or video) ` +
+    `and choose that folder.`;
+}
+
+// The sentences under the numbers. `check` swaps will/would, because the free check
+// changes nothing.
+function buildNotes(c, results, check) {
+  const w = check ? 'would be' : 'will be';
+  const s = check ? 'would get' : 'will get';
+  const notes = [];
+  if (c.write > 0) {
+    notes.push(`${c.write} file(s) ${s} a date from a matching JSON file or a recognised ` +
+      `file name.`);
+  }
+  if (c['has-date'] > 0) notes.push(`${c['has-date']} file(s) already have a date in the file itself; nothing needs writing.`);
+  if (c.format > 0) notes.push(`${c.format} file(s) have a date in Google's data but are in a format this check doesn't cover for writing (HEIC, GIF, AVI, MKV and others).`);
+  if (c['no-date'] > 0) notes.push(`${c['no-date']} file(s) have no date in any JSON file, in the file itself or in the file name.`);
+  if (c.range > 0) notes.push(`${c.range} video file(s) have a date too far from 1970 to store in a video header.`);
+  const missing = missingJsonNote(results);
+  if (missing) notes.push(missing);
+  if (c.corrupt > 0) notes.push(`${c.corrupt} file(s) are empty, damaged, have a name that doesn't match their contents (for example a .jpg that isn't a JPEG), or are laid out in a way this check can't read, so no date can be recovered from them.`);
+  return notes;
+}
+
+// The free check's page logic. It reads dates and reports; there is no writing code in
+// this page at all (core.js and ui.js hold none), so it cannot change a file.
+
+const CHECK_LIMIT = null; // the repo copy reads every file
+
+function initUi() {
+  document.getElementById('btn-pick').addEventListener('click', async () => {
+    let rootDirHandle;
+    try {
+      rootDirHandle = await window.showDirectoryPicker({ mode: 'read', id: 'takeout-check-input' });
+    } catch (e) {
+      if (e.name !== 'AbortError') alert('Could not open folder: ' + e.message);
+      return;
+    }
+
+    showStep('step-scanning');
+    const bar = document.getElementById('scan-bar');
+    const status = document.getElementById('scan-status');
+
+    try {
+      const scan = await scanFolder(rootDirHandle, (done, total, msg) => {
+        status.textContent = msg;
+        bar.style.width = total > 0 ? `${Math.round(100 * done / total)}%` : '10%';
+      }, { sampleLimit: CHECK_LIMIT, maxFiles: 200000 });
+
+      const results = scan.results;
+      const c = classifyResults(results);
+
+      showStep('step-report');
+      document.getElementById('stat-grid').innerHTML =
+        stat(scan.totalMedia, 'Photos and videos in that folder', '') +
+        stat(c.write, 'Would get a date', 'green') +
+        stat(c['has-date'], 'Already have a date', 'gray') +
+        stat(c.format + c['no-date'] + c.corrupt + c.range, 'Cannot be fixed', (c.format + c['no-date'] + c.corrupt + c.range) > 0 ? 'red' : 'gray');
+
+      const parts = [];
+      if (scan.totalMedia === 0) {
+        parts.push('<div class="notice error">No photos or videos were found in that folder. Unzip your Takeout download first, then choose the unzipped folder (the one that contains "Google Photos").</div>');
+      } else {
+        if (c.write > 0) {
+          parts.push(`<div class="notice success">Of the ${scan.scanned} file(s) checked, <strong>${c.write}</strong> are missing a date that can be restored ` +
+            `(from a matching JSON file or a recognised file name).</div>`);
+        } else {
+          const none = missingJsonNote(results) !== '' || (c.format + c['no-date'] + c.corrupt + c.range) > 0;
+          parts.push(none ? '<div class="notice">No restorable dates were found in the checked files.</div>'
+            : '<div class="notice info">None of the checked files are missing a restorable date. If these are the files you care about, there is nothing to fix.</div>');
+        }
+        parts.push(`<div class="notice info">${buildNotes(c, results, true).join('<br>') || 'Everything checked already has a date.'}</div>`);
+        parts.push(`<div class="notice">This is a check only: <strong>nothing was changed</strong>.${c.write > 0 ? ' The tools listed at the end of this page can write the dates into copies.' : ''}</div>`);
+      }
+      if (scan.sampled) {
+        parts.push(`<div class="notice">Your folder holds ${scan.totalMedia} photos and videos. This check read ${scan.scanned} of them, spread evenly across the folders, so the counts above are a sample, not the whole library.</div>`);
+      }
+      if (scan.truncated) {
+        parts.push('<div class="notice">That folder holds more than 200,000 files, so this check listed only the first 200,000 files of any kind.</div>');
+      }
+      document.getElementById('report-notice').innerHTML = parts.join('');
+      document.getElementById('report-table').innerHTML = breakdownTable(results) + fileLists(results);
+
+      const buy = document.getElementById('buy-text');
+      const nothing = scan.totalMedia === 0 || c.write === 0;
+      document.getElementById('tool-links').style.display = nothing ? 'none' : '';
+      if (nothing) {
+        buy.textContent = 'Nothing checked here needs a date written.';
+      } else {
+        buy.textContent = `This check only reads. To write the recovered dates into copies of your files: the free, open-source GooglePhotosTakeoutHelper_Neo does it from the command line; Takeout Date Restorer (A$12 once, by the maker of this check) does it in the browser, writing copies and leaving your Takeout folder unchanged.`;
+      }
+    } catch (e) {
+      showStep('step-pick');
+      alert('Check failed: ' + e.message);
+    }
+  });
+
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    showStep('step-pick');
+  });
+}
+
+// ─── Browser support check ───────────────────────────────────────────────────
+if (typeof document !== 'undefined') {
+  if (!window.showDirectoryPicker) {
+    document.getElementById('step-unsupported').classList.add('active');
+  } else {
+    document.getElementById('step-pick').classList.add('active');
+  }
+  initUi();
+}
+
+
+// Repo copy only: which files fall in each group, as plain local text (nothing leaves the page).
+function escText(t) {
+  return String(t).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+function fileLists(results) {
+  const groups = [
+    ['write', 'Would get a date'], ['no-date', 'No date found anywhere'],
+    ['corrupt', 'Empty, damaged or not what the name says'], ['format', 'Format not covered'],
+    ['range', 'Video date too far from 1970'], ['has-date', 'Already have a date'],
+  ];
+  const parts = [];
+  for (const [action, label] of groups) {
+    const rows = results.filter(r => r.action === action).map(r => {
+      const why = action !== 'write' ? '' : (r.sidecarData && r.sidecarData.ts != null) ? ' (date from its .json file)' : ' (date from its file name)';
+      return escText((r.dirPath ? r.dirPath + '/' : '') + r.name) + why;
+    });
+    if (!rows.length) continue;
+    parts.push(`<details><summary>${escText(label)}: ${rows.length} file(s)</summary><ul>` +
+      rows.map(n => `<li>${n}</li>`).join('') + '</ul></details>');
+  }
+  return parts.length ? '<h3>Which files</h3>' + parts.join('') : '';
+}
+</script>
+</body>
+</html>
